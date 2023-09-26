@@ -1,4 +1,5 @@
 
+#include <iostream>
 #include <glm/gtc/random.hpp>
 
 #include "WindowInputManager.h"
@@ -18,6 +19,11 @@
 #include <string>
 #include <cstdarg>
 
+// read files 
+#include <fstream>
+#include <sstream>
+
+
 
 inline std::string format(const char* fmt, ...) {
     int size = 512;
@@ -36,6 +42,33 @@ inline std::string format(const char* fmt, ...) {
     va_end(vl);
     delete[] buffer;
     return ret;
+}
+
+
+// Function to calculate the variance of an array of glm::vec4 vectors
+glm::vec4 calculateVariance(const glm::vec4* vecArray, int arraySize, const glm::vec4& mean) {
+    glm::vec4 sumOfSquares(0.0f, 0.0f, 0.0f, 0.0f);
+
+    for (int i = 0; i < arraySize; i++) {
+        glm::vec4 deviation = vecArray[i] - mean;
+        sumOfSquares += deviation * deviation;
+    }
+
+    return sumOfSquares / static_cast<float>(arraySize);
+}
+
+
+glm::vec4 calculateMean(const glm::vec4* vecArray, int arraySize) {
+    glm::vec4 sum(0.0f, 0.0f, 0.0f, 0.0f);
+
+    for (int i = 0; i < arraySize; i++) {
+        sum += vecArray[i];
+    }
+
+    // Divide the sum by the number of vectors to get the mean
+    glm::vec4 mean = sum / static_cast<float>(arraySize);
+
+    return mean;
 }
 
 std::vector<Particle> getParticles(glm::vec3 worldDimensions, int n) {
@@ -64,14 +97,24 @@ std::vector<Particle> getParticles(glm::vec3 worldDimensions, int n) {
 }
 
 
-void createBuffers(std::vector<Particle> particles) {
-    int numParticles = particles.size();
+
+int main(int argc, char *argv[])
+{
+
+
+    glm::vec3 worldDimensions(5.f, 5.f, 5.f);
+
+    int numParticles = 40000;
+
+    std::vector<Particle> particles = getParticles(worldDimensions, numParticles);
+
 
     glm::vec4* velocities = new glm::vec4[numParticles]();
     glm::vec4* accelerations = new glm::vec4[numParticles]();
     glm::vec4* positions = new glm::vec4[numParticles]();
     glm::vec4* masses = new glm::vec4[numParticles]();
     glm::vec4* forces = new glm::vec4[numParticles]();
+
 
     for (int i = 0; i < numParticles; i++) {
         velocities[i] = particles[i].velocity;
@@ -80,6 +123,32 @@ void createBuffers(std::vector<Particle> particles) {
         masses[i] = glm::vec4(particles[i].mass, 0, 0, 0);
         forces[i] = glm::vec4(0.f);
     }
+
+
+    glm::vec2 windowDim(800, 600);
+    Window window(windowDim, "temp");
+
+    std::string positionsCalculatorPath = "../Shaders/glsl/updateParticles.glsl";
+    std::string forceCalculatorPath = "../Shaders/glsl/forceCalculation.glsl";
+
+
+    /// Compute shaders
+    int blockSize = 64;
+    float timeStep = 0.001;
+    float squareSoft = 0.1;
+
+    ComputeShader *positionCalculator = new ComputeShader(positionsCalculatorPath);
+    positionCalculator->use();
+    positionCalculator->setFloat("deltaTime", timeStep);
+
+    ComputeShader *forceCalculator = new ComputeShader(forceCalculatorPath);
+    forceCalculator->use();
+    forceCalculator->setFloat("squaredSoftening", squareSoft);
+    /////
+
+
+
+    /// Create data buffers in OpenGL
 
     GLuint VAO;
     GLuint VBO;
@@ -108,40 +177,9 @@ void createBuffers(std::vector<Particle> particles) {
     glGenBuffers(1, &forces_SSBO);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, forces_SSBO);
     glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(glm::vec4) * numParticles, forces, GL_DYNAMIC_DRAW);
-}
 
-int main(int argc, char *argv[])
-{
-    glm::vec3 worldDimensions(5.f, 5.f, 5.f);
+    ///
 
-    int numParticles = 40000;
-
-    std::vector<Particle> particles = getParticles(worldDimensions, numParticles);
-
-
-    glm::vec2 windowDim(800, 600);
-    Window window(windowDim, "temp");
-
-    std::string positionsCalculatorPath = "../Shaders/glsl/updateParticles.glsl";
-    std::string forceCalculatorPath = "../Shaders/glsl/forceCalculation.glsl";
-
-
-    /// Compute shaders
-    int blockSize = 64;
-    float timeStep = 0.001;
-    float squareSoft = 0.1;
-
-    ComputeShader *positionCalculator = new ComputeShader(positionsCalculatorPath);
-    positionCalculator->use();
-    positionCalculator->setFloat("deltaTime", timeStep);
-
-    ComputeShader *forceCalculator = new ComputeShader(forceCalculatorPath);
-    forceCalculator->use();
-    forceCalculator->setFloat("squaredSoftening", squareSoft);
-    /////
-
-
-    createBuffers(particles);
 
     /// draw shaders
 
@@ -157,6 +195,9 @@ int main(int argc, char *argv[])
     int width = 800;
     int height = 600;
     int c = 0;
+
+    std::ofstream outFile("standard_deviation.txt");
+
 
     while (!glfwWindowShouldClose(window.getWindow()))
     {
@@ -207,6 +248,30 @@ int main(int argc, char *argv[])
 
         //// Cleanup
         //delete[] pixels;
+
+
+
+
+        /// Stuff
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, postitions_SSBO);
+        // Map the position SSBO memory to CPU-accessible memory
+        glm::vec4* positions = (glm::vec4*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_READ_ONLY);
+        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+
+
+        glm::vec4 mean = calculateMean(positions, numParticles);
+        glm::vec4 variance = calculateVariance(positions, numParticles, mean);
+        glm::vec4 standardDeviation = glm::sqrt(variance);
+        float standardD = (standardDeviation.x + standardDeviation.y + standardDeviation.z) / 3;
+        std::cout << "Standard Deviation: " << standardD  << std::endl;
+        std::stringstream ss;
+        ss << standardD;
+        std::string standardDeviationString = ss.str();
+        outFile << standardDeviationString << std::endl;
+
+        // Close the file (inside the loop)
+        //outFile.close();
+
 
         glfwSwapBuffers(window.getWindow());
         glfwPollEvents();
