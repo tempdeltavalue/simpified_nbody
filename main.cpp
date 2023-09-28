@@ -8,6 +8,8 @@
 #include "Camera.h"
 
 #include "vector"
+#include <random>
+#include <ctime>
 
 #include "Shader.h"
 #include "ComputeShader.h"
@@ -23,7 +25,12 @@
 #include <fstream>
 #include <sstream>
 
-
+// Function to generate a random float in the range -1 to 1
+float getRandomFloat() {
+    static std::mt19937 rng(static_cast<unsigned>(std::time(nullptr)));
+    static std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+    return dist(rng);
+}
 
 inline std::string format(const char* fmt, ...) {
     int size = 512;
@@ -180,6 +187,27 @@ int main(int argc, char *argv[])
 
     ///
 
+       // Create a std::vector of floats and initialize it with random values
+    const int numElements = 3;
+
+    std::vector<float> weights(numElements);
+    for (int i = 0; i < numElements; ++i) {
+        weights[i] = getRandomFloat();
+    }
+
+
+    // Generate and bind the OpenGL shader storage buffer object (SSBO)
+    GLuint weights_SSBO;
+    glGenBuffers(1, &weights_SSBO);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, weights_SSBO);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(glm::vec4) * numParticles, weights.data(), GL_DYNAMIC_DRAW);
+
+    // Now, weights.data() contains the data of the std::vector in a format suitable for OpenGL SSBO
+    // You can pass weights_SSBO to your shader for further processing.
+
+    // Don't forget to clean up when you're done
+    //glDeleteBuffers(1, &weights_SSBO);
+
 
     /// draw shaders
 
@@ -253,7 +281,7 @@ int main(int argc, char *argv[])
 
 
         /// Stuff
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, postitions_SSBO);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, forces_SSBO);
         // Map the position SSBO memory to CPU-accessible memory
         glm::vec4* positions = (glm::vec4*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_READ_ONLY);
         glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
@@ -262,8 +290,8 @@ int main(int argc, char *argv[])
         glm::vec4 mean = calculateMean(positions, numParticles);
         glm::vec4 variance = calculateVariance(positions, numParticles, mean);
         glm::vec4 standardDeviation = glm::sqrt(variance);
-        float standardD = (standardDeviation.x + standardDeviation.y + standardDeviation.z) / 3;
-        std::cout << "Standard Deviation: " << standardD  << std::endl;
+        float standardD = (mean.x + mean.y + mean.z) / 3;
+        //std::cout << "Standard Deviation: " << mean.x << mean.y << mean.z << std::endl;
         std::stringstream ss;
         ss << standardD;
         std::string standardDeviationString = ss.str();
