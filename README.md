@@ -11,7 +11,11 @@ standard deviation (entropy) through time with alpha 0.5 and alpha 0.05  (check 
 ![download (4)](https://github.com/tempdeltavalue/simpified_nbody/assets/36921178/4331a96e-7cf3-4a45-93aa-56ce92ec8dac)
 
 
+[very slow python version](https://colab.research.google.com/drive/1w-W-kS-bewuT2ObV6jwD-KmI_PXwPYqs)
 [video](https://www.youtube.com/watch?v=103i6RXUE3k).
+
+
+
 
 
 based on:
